@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: receiver-service
+spec:
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  selector:
+    app: receiver
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: receiver-deployment
+spec:
+  selector:
+    matchLabels:
+      app: receiver
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: receiver
+    spec:
+      terminationGracePeriodSeconds: 15
+      containers:
+      - name: receiver
+        image: skarlso/kube-receiver-alpine:1.1.4
+        ports:
+        - containerPort: 8000
+          hostPort: 8000
+        args:
+          - --db-host=mysql.default.svc.cluster.local
+          - --db-username-password=$(MYSQL_USERPASSWORD)
+          - --db-port=3306
+          - --db-dbname=kube
+          - --producer-address=nsqd-srv.default.svc.cluster.local:4150
+        env:
+        - name: MYSQL_USERPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kube-face-secret
+              key: mysql_userpassword
+        # resources:
+        #   limits:
+        #     cpu: "500m"
+        #     memory: "1024Mi"
+        #   requests:
+        #     cpu: "300m"
+        #     memory: "1024Mi"
+
