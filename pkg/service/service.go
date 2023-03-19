@@ -59,7 +59,7 @@ type Paths struct {
 func (s *receiver) postImage(w http.ResponseWriter, r *http.Request) {
 	var p Path
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		fmt.Fprintf(w, "got error while decoding body: %s", err)
+		http.Error(w, fmt.Sprintf("got error while decoding body: %s", err), http.StatusInternalServerError)
 		return
 	}
 	defer func() {
@@ -73,7 +73,7 @@ func (s *receiver) postImage(w http.ResponseWriter, r *http.Request) {
 	}
 	var pathsJSON bytes.Buffer
 	if err := json.NewEncoder(&pathsJSON).Encode(ps); err != nil {
-		fmt.Fprintf(w, "failed to encode paths: %s", err)
+		http.Error(w, fmt.Sprintf("failed to encode paths: %s", err), http.StatusInternalServerError)
 		return
 	}
 	clone := r.Clone(context.Background())
@@ -87,14 +87,15 @@ func (s *receiver) postImages(w http.ResponseWriter, r *http.Request) {
 	s.deps.Logger.Debug().Msg("post images called...")
 	var p Paths
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		fmt.Fprintf(w, "got error while decoding request body: %s", err)
+		http.Error(w, fmt.Sprintf("got error while decoding request body: %s", err), http.StatusBadRequest)
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.Println("failed to close body: ", err)
+			s.deps.Logger.Error().Err(err).Msg("failed to close body")
 		}
 	}()
+
 	fmt.Fprintf(w, "got paths: %+v\n", p)
 	for _, path := range p.Paths {
 		image := models.Image{
@@ -132,6 +133,5 @@ func (s *receiver) Run(ctx context.Context) error {
 	router := mux.NewRouter()
 	router.HandleFunc("/image/post", s.postImage).Methods("POST")
 	router.HandleFunc("/images/post", s.postImages).Methods("POST")
-	log.Fatal(http.ListenAndServe(":8000", router))
-	return nil
+	return http.ListenAndServe(":8000", router)
 }

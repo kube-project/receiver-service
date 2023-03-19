@@ -6,5 +6,4 @@ import "github.com/kube-project/receiver-service/models"
 type ImageProvider interface {
 	SaveImage(image *models.Image) (*models.Image, error)
 	LoadImage(i int64) (*models.Image, error)
-	SearchPath(path string) (bool, error)
 }
