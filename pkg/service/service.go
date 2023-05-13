@@ -33,13 +33,8 @@ type Dependencies struct {
 	Logger        zerolog.Logger
 }
 
-// Service interface defines a service which can Run something.
-type Service interface {
-	Run(ctx context.Context) error
-}
-
-// Service represents the service object of the receiver.
-type receiver struct {
+// Receiver represents the service object of the receiver.
+type Receiver struct {
 	config Config
 	deps   Dependencies
 }
@@ -56,34 +51,40 @@ type Paths struct {
 
 // PostImage handles a post of an image. Saves it to the database
 // and sends it to NSQ for further processing.
-func (s *receiver) postImage(w http.ResponseWriter, r *http.Request) {
+func (s *Receiver) postImage(w http.ResponseWriter, r *http.Request) {
 	var p Path
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		http.Error(w, fmt.Sprintf("got error while decoding body: %s", err), http.StatusInternalServerError)
 		return
 	}
+
 	defer func() {
 		if err := r.Body.Close(); err != nil {
 			log.Println("failed to close body: ", err)
 		}
 	}()
+
 	fmt.Fprintf(w, "got path: %+v\n", p)
+
 	ps := Paths{
 		Paths: []Path{p},
 	}
 	var pathsJSON bytes.Buffer
+
 	if err := json.NewEncoder(&pathsJSON).Encode(ps); err != nil {
 		http.Error(w, fmt.Sprintf("failed to encode paths: %s", err), http.StatusInternalServerError)
 		return
 	}
+
 	clone := r.Clone(context.Background())
 	clone.Body = io.NopCloser(&pathsJSON)
 	clone.ContentLength = int64(pathsJSON.Len())
+
 	s.postImages(w, clone)
 }
 
 // PostImages handles a post of multiple images.
-func (s *receiver) postImages(w http.ResponseWriter, r *http.Request) {
+func (s *Receiver) postImages(w http.ResponseWriter, r *http.Request) {
 	s.deps.Logger.Debug().Msg("post images called...")
 	var p Paths
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -119,8 +120,8 @@ func (s *receiver) postImages(w http.ResponseWriter, r *http.Request) {
 }
 
 // New creates a new service will all its needed configuration.
-func New(cfg Config, deps Dependencies) Service {
-	s := &receiver{
+func New(cfg Config, deps Dependencies) *Receiver {
+	s := &Receiver{
 		config: cfg,
 		deps:   deps,
 	}
@@ -128,7 +129,7 @@ func New(cfg Config, deps Dependencies) Service {
 }
 
 // Run starts this service.
-func (s *receiver) Run(ctx context.Context) error {
+func (s *Receiver) Run(ctx context.Context) error {
 	s.deps.Logger.Info().Msg("starting receiver service....")
 	router := mux.NewRouter()
 	router.HandleFunc("/image/post", s.postImage).Methods("POST")

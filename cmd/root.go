@@ -5,11 +5,11 @@ import (
 	"flag"
 	"os"
 
+	"github.com/kube-project/receiver-service/pkg/providers/images"
+	"github.com/kube-project/receiver-service/pkg/providers/sender"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/kube-project/receiver-service/pkg/images"
-	"github.com/kube-project/receiver-service/pkg/sender"
 	"github.com/kube-project/receiver-service/pkg/service"
 )
 

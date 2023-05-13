@@ -3,8 +3,8 @@ package images
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"log"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/zerolog"
@@ -21,18 +21,18 @@ type Config struct {
 	Logger           zerolog.Logger
 }
 
-type imageProvider struct {
-	config Config
+type ImageProvider struct {
+	Config
 }
 
 // NewImageProvider creates a new image provider using the db.
-func NewImageProvider(cfg Config) *imageProvider {
-	return &imageProvider{config: cfg}
+func NewImageProvider(cfg Config) *ImageProvider {
+	return &ImageProvider{Config: cfg}
 }
 
 // SaveImage takes an image model and saves it into the database.
-func (i *imageProvider) SaveImage(image *models.Image) (*models.Image, error) {
-	i.config.Logger.Debug().Str("path", string(image.Path)).Msg("Saving image path...")
+func (i *ImageProvider) SaveImage(image *models.Image) (*models.Image, error) {
+	i.Logger.Debug().Str("path", string(image.Path)).Msg("Saving image path...")
 
 	var (
 		result sql.Result
@@ -41,7 +41,7 @@ func (i *imageProvider) SaveImage(image *models.Image) (*models.Image, error) {
 	f := func(tx *sql.Tx) error {
 		result, err = tx.Exec("insert into images (path, person, status) values (?, ?, ?)", image.Path, image.PersonID, image.Status)
 		if err != nil {
-			i.config.Logger.Debug().Err(err).Msg("failed to run insert")
+			i.Logger.Debug().Err(err).Msg("failed to run insert")
 			return fmt.Errorf("failed to insert image: %w", err)
 		}
 
@@ -59,8 +59,8 @@ func (i *imageProvider) SaveImage(image *models.Image) (*models.Image, error) {
 }
 
 // LoadImage takes an id and looks for that id in the database.
-func (i *imageProvider) LoadImage(id int64) (*models.Image, error) {
-	i.config.Logger.Info().Int64("id", id).Msg("Loading image with ID")
+func (i *ImageProvider) LoadImage(id int64) (*models.Image, error) {
+	i.Logger.Info().Int64("id", id).Msg("Loading image with ID")
 
 	var (
 		imageID int
@@ -90,24 +90,27 @@ func (i *imageProvider) LoadImage(id int64) (*models.Image, error) {
 }
 
 // execInTx executes in transaction. It will either commit, or rollback if there was an error.
-func (i *imageProvider) execInTx(ctx context.Context, f func(tx *sql.Tx) error) error {
+func (i *ImageProvider) execInTx(ctx context.Context, f func(tx *sql.Tx) error) (err error) {
 	db, err := i.connect()
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			err = errors.Join(err, cerr)
+		}
+	}()
+
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
+
 	// Defer a rollback in case anything fails.
 	defer func() {
-		if err := tx.Rollback(); err != nil {
-			log.Println("Failed to rollback: ", err)
-		}
-	}()
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Println("Failed to close database: ", err)
+		if rerr := tx.Rollback(); rerr != nil {
+			err = errors.Join(err, rerr)
 		}
 	}()
 
@@ -117,17 +120,27 @@ func (i *imageProvider) execInTx(ctx context.Context, f func(tx *sql.Tx) error) 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+
 	return nil
 }
 
-func (i *imageProvider) createConnectionString() string {
+func (i *ImageProvider) createConnectionString() string {
 	return fmt.Sprintf("%s@tcp(%s:%s)/%s",
-		i.config.UsernamePassword,
-		i.config.Hostname,
-		i.config.Port,
-		i.config.Dbname)
+		i.UsernamePassword,
+		i.Hostname,
+		i.Port,
+		i.Dbname)
 }
 
-func (i *imageProvider) connect() (*sql.DB, error) {
-	return sql.Open("mysql", i.createConnectionString())
+func (i *ImageProvider) connect() (*sql.DB, error) {
+	db, err := sql.Open("mysql", i.createConnectionString())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open connection to database: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to estabilish connection to database: %w", err)
+	}
+
+	return db, nil
 }
