@@ -107,14 +107,10 @@ func (i *ImageProvider) execInTx(ctx context.Context, f func(tx *sql.Tx) error) 
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
 
-	// Defer a rollback in case anything fails.
-	defer func() {
+	if err := f(tx); err != nil {
 		if rerr := tx.Rollback(); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
-	}()
-
-	if err := f(tx); err != nil {
 		return fmt.Errorf("failed to run function in transaction: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
