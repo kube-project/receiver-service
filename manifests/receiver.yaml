@@ -11,6 +11,15 @@ spec:
     app: receiver
   type: NodePort
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kube-face-secret
+type: Opaque
+data:
+  mysql_userpassword: cm9vdDpwYXNzd29yZDEyMw==
+  mysql_password: cGFzc3dvcmQxMjM=
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,7 +42,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
       - name: receiver
-        image: skarlso/kube-receiver-alpine:1.1.4
+        image: ghcr.io/kube-project/receiver-service:v0.0.2
         ports:
         - containerPort: 8000
           hostPort: 8000

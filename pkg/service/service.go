@@ -64,6 +64,11 @@ func (s *Receiver) postImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if p.Path == "" {
+		http.Error(w, "path cannot be an empty string", http.StatusBadRequest)
+		return
+	}
+
 	fmt.Fprintf(w, "got path: %+v\n", p)
 
 	ps := Paths{
@@ -91,13 +96,19 @@ func (s *Receiver) postImages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("got error while decoding request body: %s", err), http.StatusBadRequest)
 		return
 	}
+
 	defer func() {
 		if err := r.Body.Close(); err != nil {
 			s.deps.Logger.Error().Err(err).Msg("failed to close body")
 		}
 	}()
 
-	fmt.Fprintf(w, "got paths: %+v\n", p)
+	if len(p.Paths) == 0 {
+		http.Error(w, "paths cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Fprintf(w, "got paths: %+v with length: %d\n", p, len(p.Paths))
 	for _, path := range p.Paths {
 		image := models.Image{
 			ID:       -1,
@@ -105,16 +116,20 @@ func (s *Receiver) postImages(w http.ResponseWriter, r *http.Request) {
 			Path:     []byte(path.Path),
 			Status:   models.PENDING,
 		}
+
 		savedImage, err := s.deps.ImageProvider.SaveImage(&image)
 		if err != nil {
 			fmt.Fprintf(w, "got error while saving image: %s; moving on to next...", err)
 			continue
 		}
+
 		fmt.Fprintf(w, "image saved with id: %d\n", savedImage.ID)
+
 		if err := s.deps.SendProvider.SendImage(uint64(savedImage.ID)); err != nil {
 			fmt.Fprintf(w, "error while sending image to queue: %s", err)
 			continue
 		}
+
 		fmt.Fprintln(w, "image sent to nsq")
 	}
 }

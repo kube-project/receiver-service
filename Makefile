@@ -1,7 +1,7 @@
 NAME=receiver
 
 # Set the build dir, where built cross-compiled binaries will be output
-BUILDDIR := build
+BUILDDIR := bin
 
 # List the GOOS and GOARCH to build
 GO_LDFLAGS_STATIC="-s -w $(CTIMEVAR) -extldflags -static"
